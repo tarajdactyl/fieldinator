@@ -11,13 +11,17 @@ class Field():
 
 class pDiff():
     def __init__(self, input_file, display_filter='', packet_offset=0,
-            verbose=False, endianness="big"):
+            verbose=False, endianness="big", protocol=None):
         self.input_file = input_file
         self.display_filter = display_filter
         self.packet_offset = packet_offset
         self.verbose = verbose
         self.endianness = endianness
         self.is_pcap = self.magic_is_pcap()
+        if protocol:
+            self.protocol = protocol
+        else:
+            self.protocol = "frame"
 
         if self.is_pcap:
             self.packets = pyshark.FileCapture(self.input_file,
@@ -32,8 +36,9 @@ class pDiff():
         self.dwords = {}
         self.fields = []
 
-        self.process_packets()
-        self.find_likely_fields()
+        ret = self.process_packets()
+        if ret != -1:
+            self.find_likely_fields()
 
     def process_packets(self):
         self.bytes = {}
@@ -42,7 +47,15 @@ class pDiff():
         for pkt in self.packets:
             self.vlog(f"Frame {pkt.number}")
             #self.vlog(f"  {pkt.frame_info}")
-            pbytes = bytes.fromhex(pkt.frame_raw.value)[self.packet_offset:]
+            #pbytes = bytes.fromhex(pkt.frame_raw.value)[self.packet_offset:]
+            layername = f'{self.protocol}_raw'
+            if not layername in (l.layer_name for l in pkt.layers):
+                self.err(f"Layer {layername} does not exist in this packet!\n"
+                        "Try setting a filter to include only packets with "
+                        "the protocol you're interested in!")
+                return -1
+
+            pbytes = bytes.fromhex(pkt[layername].value)[self.packet_offset:]
             for i, b in enumerate(pbytes):
                 i = i + self.packet_offset
                 # record bytes
@@ -63,6 +76,7 @@ class pDiff():
                         self.dwords[i] = {}
                     dword = int.from_bytes(pbytes[i:4], self.endianness)
                     self.dwords[i][dword] = self.dwords[i].get(dword, 0) + 1
+        return 0
 
     def log(self, *args, **kwargs):
         # todo: proper logging
@@ -201,10 +215,10 @@ def main():
     parser.add_argument('--dwords', '-d', action="store_true",
                         help='List common dwords (uint32) per offset')
     parser.add_argument('--strings', '-s', action="store_true", help='Show string stats')
-    # TODO:
-    # - specify dissection layer (-l)
+    parser.add_argument('--protocol', '-p', help='protocol layer to start at instead of whole frame')
+
     args = parser.parse_args()
-    pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose, args.endian)
+    pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose, args.endian, args.protocol)
     #pd.show_heatmap()
     if args.fields:
         pd.show_likely_fields()
