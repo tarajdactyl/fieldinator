@@ -7,8 +7,8 @@ import colorsys
 
 NORMALCODE = '\x1b[0m'
 
-def hd_linebreak(off):
-    return f"\n{NORMALCODE}{off:04x}:  "
+def hd_offset(off, width):
+    return f'{NORMALCODE}{off:0{width}x}:  '
 
 def heatMapColor(value):
     """
@@ -180,10 +180,11 @@ class pDiff():
 
     def show_heatmap(self, levels=8):
         c = 0
+        offwidth = math.ceil(len(self.bytes).bit_length() / 4)
         for field in self.fields:
             n = len(field.values.keys())
             if (c % 0x10) == 0:
-                print(f"{c:04x}:  ", end='')
+                print(hd_offset(c, offwidth), end='')
 
             bytes_left = 16 - (c%16)
             bytes_to_print = []
@@ -201,7 +202,7 @@ class pDiff():
             fieldstr = '[' + '  '.join(bytes_to_print[:bytes_left])
             nextline = bytes_to_print[bytes_left:]
             if nextline:
-                fieldstr += (' ' + hd_linebreak(c) + get_heatmap_colorcode(level/levels) + ' '
+                fieldstr += (' \n' + hd_offset(c+bytes_left, offwidth) + get_heatmap_colorcode(level/levels) + ' '
                              + '  '.join(nextline))
             fieldstr += ']'
             printHeatMapValue(fieldstr, level/levels)
@@ -211,7 +212,7 @@ class pDiff():
                 print()
 
         if c % 0x10:
-            print(hd_linebreak(c))
+            print('\n' + hd_offset(c, offwidth))
 
     def show(self, freqarray, label, width):
         for i in sorted(freqarray.keys()):
