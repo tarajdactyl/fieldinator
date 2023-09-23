@@ -11,7 +11,7 @@ class Field():
 
 class pDiff():
     def __init__(self, input_file, display_filter='', packet_offset=0,
-            verbose=False, endianness="big", protocol=None):
+            verbose=False, endianness="big", protocol=None, protocol_field=None):
         self.input_file = input_file
         self.display_filter = display_filter
         self.packet_offset = packet_offset
@@ -22,6 +22,10 @@ class pDiff():
             self.protocol = protocol
         else:
             self.protocol = "frame"
+
+        self.protocol_field = None
+        if protocol_field:
+            self.protocol_field = protocol_field
 
         if self.is_pcap:
             self.packets = pyshark.FileCapture(self.input_file,
@@ -48,14 +52,32 @@ class pDiff():
             self.vlog(f"Frame {pkt.number}")
             #self.vlog(f"  {pkt.frame_info}")
             #pbytes = bytes.fromhex(pkt.frame_raw.value)[self.packet_offset:]
-            layername = f'{self.protocol}_raw'
+
+            layername = self.protocol
+            if not self.protocol_field:
+                layername = f'{self.protocol}_raw'
+
             if not layername in (l.layer_name for l in pkt.layers):
                 self.err(f"Layer {layername} does not exist in this packet!\n"
                         "Try setting a filter to include only packets with "
                         "the protocol you're interested in!")
                 return -1
 
-            pbytes = bytes.fromhex(pkt[layername].value)[self.packet_offset:]
+            layer = pkt[layername]
+
+            pbytes = b''
+            if self.protocol_field:
+                fieldname = f"{self.protocol_field}_raw"
+                if not fieldname in layer.field_names:
+                    self.err(f"Layer {layername} does not exist in this packet!\n"
+                            "Try setting a filter to include only packets with "
+                            "the field you're interested in!")
+                    return -1
+
+                rawfield = getattr(layer, fieldname)
+                pbytes = bytes.fromhex(rawfield[0])
+            else:
+                pbytes = bytes.fromhex(layer.value)[self.packet_offset:]
             for i, b in enumerate(pbytes):
                 i = i + self.packet_offset
                 # record bytes
@@ -216,9 +238,11 @@ def main():
                         help='List common dwords (uint32) per offset')
     parser.add_argument('--strings', '-s', action="store_true", help='Show string stats')
     parser.add_argument('--protocol', '-p', help='protocol layer to start at instead of whole frame')
+    parser.add_argument('--protocol-field', help='Name of field within protocol to use for analysis instead of the whole frame')
+
 
     args = parser.parse_args()
-    pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose, args.endian, args.protocol)
+    pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose, args.endian, args.protocol, args.protocol_field)
     #pd.show_heatmap()
     if args.fields:
         pd.show_likely_fields()
