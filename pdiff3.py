@@ -11,11 +11,13 @@ class Field():
 
 
 class pDiff():
-    def __init__(self, input_file, display_filter='', packet_offset=0, verbose=False):
+    def __init__(self, input_file, display_filter='', packet_offset=0,
+            verbose=False, endianness="big"):
         self.input_file = input_file
         self.display_filter = display_filter
         self.packet_offset = packet_offset
         self.verbose = verbose
+        self.endianness = endianness
         self.is_pcap = self.magic_is_pcap()
 
         if self.is_pcap:
@@ -52,14 +54,14 @@ class pDiff():
                 if i + 1 < len(pbytes):
                     if i not in self.words:
                         self.words[i] = {}
-                    word = int.from_bytes(pbytes[i:2])
+                    word = int.from_bytes(pbytes[i:2], self.endianness)
                     self.words[i][word] = self.words[i].get(word, 0) + 1
 
                 # record dword
                 if i + 3 < len(pbytes):
                     if i not in self.dwords:
                         self.dwords[i] = {}
-                    dword = int.from_bytes(pbytes[i:4])
+                    dword = int.from_bytes(pbytes[i:4], self.endianness)
                     self.dwords[i][dword] = self.dwords[i].get(dword, 0) + 1
 
     def log(self, *args, **kwargs):
@@ -116,7 +118,6 @@ class pDiff():
         return False
 
     def show_heatmap(self):
-        self.log('not implemented')
         pass
 
     def show(self, freqarray, label, width):
@@ -189,6 +190,8 @@ def main():
     parser.add_argument('--filter', '-f', default="", help='Display Filter to use (PCAPs only)')
     parser.add_argument('--packet-offset', '-o', type=lambda x: int(x,0), default=0,
                         help='Offset in packet to diff (PCAPs only)')
+    parser.add_argument('--endian', '-e', choices=['little', 'big'],
+            help="endianness for multi-byte integers", default='big')
     parser.add_argument('--verbose', '-v', action="store_true", help='verbose output')
     parser.add_argument('--fields', '-F', action="store_true",
             help='List likely fields and their common values based on frequency analysis')
@@ -201,7 +204,7 @@ def main():
     # TODO:
     # - specify dissection layer (-l)
     args = parser.parse_args()
-    pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose)
+    pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose, args.endian)
     #pd.show_heatmap()
     if args.fields:
         pd.show_likely_fields()
