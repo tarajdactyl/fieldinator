@@ -12,7 +12,54 @@ class pDiff():
         self.verbose = verbose
         self.is_pcap = self.magic_is_pcap()
 
+        if self.is_pcap:
+            self.packets = pyshark.FileCapture(self.input_file,
+                                               use_json=True, include_raw=True,
+                                               display_filter=self.display_filter)
+        else:
+            self.log("Text mode isn't implemented yet")
+            return
+
+        self.bytes = {}
+        self.words = {}
+        self.dwords = {}
+
+        self.process_packets()
+
+    def process_packets(self):
+        for pkt in self.packets:
+            self.vlog(f"Frame {pkt.number}")
+            #self.vlog(f"  {pkt.frame_info}")
+            pbytes = bytes.fromhex(pkt.frame_raw.value)
+            for i, b in enumerate(pbytes):
+                # record bytes
+                if i not in self.bytes:
+                    self.bytes[i] = {}
+                self.bytes[i][b] = self.bytes[i].get(b, 0) + 1
+
+                # record word
+                if i + 1 < len(pbytes):
+                    if i not in self.words:
+                        self.words[i] = {}
+                    word = int.from_bytes(pbytes[i:2])
+                    self.words[i][word] = self.words[i].get(word, 0) + 1
+
+                # record dword
+                if i + 3 < len(pbytes):
+                    if i not in self.dwords:
+                        self.dwords[i] = {}
+                    dword = int.from_bytes(pbytes[i:4])
+                    self.dwords[i][dword] = self.dwords[i].get(dword, 0) + 1
+
     def log(self, *args, **kwargs):
+        # todo: proper logging
+        print(*args, **kwargs)
+
+    def err(self, *args, **kwargs):
+        # todo: make it red or something
+        return self.log(*args, **kwargs)
+
+    def vlog(self, *args, **kwargs):
         # todo: proper logging
         if self.verbose:
             print(*args, **kwargs)
@@ -44,7 +91,7 @@ class pDiff():
         with open(self.input_file, 'rb') as infile:
             magic = infile.read(4)
             if magic in pcap_magics:
-                self.log(f"{self.input_file} is a PCAP file")
+                self.vlog(f"{self.input_file} is a PCAP file")
                 return True
             if magic == pcapng_magic1:
                 # skip 4 bytes
@@ -52,26 +99,30 @@ class pDiff():
                 # read 4 bytes starting at offset 8
                 magic = infile.read(4)
                 if magic in pcapng_magic2s:
-                    self.log(f"{self.input_file} is a PCAPNG file")
+                    self.vlog(f"{self.input_file} is a PCAPNG file")
                     return True
-        self.log(f"{self.input_file} is not a PCAP[NG] file; treating it as text")
+        self.vlog(f"{self.input_file} is not a PCAP[NG] file; treating it as text")
         return False
 
     def show_heatmap(self):
         self.log('not implemented')
         pass
 
+    def show(self, freqarray, label, width):
+        for i in sorted(freqarray.keys()):
+            print(f"{label}@{i:#x}:")
+            for val, freq in sorted(freqarray[i].items(), key=lambda x: x[1], reverse=True):
+                # todo: add a percent or something other than just count
+                print(f"  {val:0{width}x} ({freq})")
+
     def show_bytes(self):
-        self.log('not implemented')
-        pass
+        return self.show(self.bytes, "Byte", 2)
 
     def show_words(self):
-        self.log('not implemented')
-        pass
+        return self.show(self.words, "Word", 4)
 
     def show_dwords(self):
-        self.log('not implemented')
-        pass
+        return self.show(self.dwords, "DWord", 8)
 
     def show_strings(self):
         self.log('not implemented')
