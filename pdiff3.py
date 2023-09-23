@@ -3,8 +3,14 @@
 import argparse
 import pyshark
 
-class pDiff():
+class Field():
+    def __init__(self, offset, length, values):
+        self.offset = offset
+        self.length = length
+        self.values = values
 
+
+class pDiff():
     def __init__(self, input_file, display_filter='', packet_offset=0, verbose=False):
         self.input_file = input_file
         self.display_filter = display_filter
@@ -23,10 +29,15 @@ class pDiff():
         self.bytes = {}
         self.words = {}
         self.dwords = {}
+        self.fields = []
 
         self.process_packets()
+        self.find_likely_fields()
 
     def process_packets(self):
+        self.bytes = {}
+        self.words = {}
+        self.dwords = {}
         for pkt in self.packets:
             self.vlog(f"Frame {pkt.number}")
             #self.vlog(f"  {pkt.frame_info}")
@@ -124,6 +135,49 @@ class pDiff():
     def show_dwords(self):
         return self.show(self.dwords, "DWord", 8)
 
+    def find_likely_fields(self):
+        """
+        Attempt to guess likely field sizes based on frequency analysis of bytes, words, and dwords.
+        Note that this builds out fields greedily, and may not be optimal
+        """
+        # for each offset in the packet, look at the number of values seen with bytes, words, dwords;
+        # prefer the largest-size field with the smallest number of possible options.
+
+        self.fields = []
+        offset = 0
+        while offset < len(self.bytes.keys()) - 4:
+            b_count = max(len(self.bytes[o].keys()) for o in range(offset,offset+4))
+            w_count = max(len(self.words[o].keys()) for o in range(offset, offset+3))
+            d_count = len(self.dwords[offset].keys())
+
+            if d_count >= w_count >= b_count:
+                width = 4
+                values = self.dwords[offset]
+            elif w_count >= b_count:
+                width = 2
+                values = self.words[offset]
+            else:
+                width = 1
+                values = self.bytes[offset]
+
+            self.fields.append(Field(offset, width, values))
+            offset += width
+
+    def show_likely_fields(self):
+        for field in self.fields:
+            typestr="Unknown"
+            if field.length == 1:
+                typestr = "Byte"
+            elif field.length == 2:
+                typestr = "Word"
+            elif field.length == 4:
+                typestr = "DWord"
+
+            print(f'{field.offset:#02x}: likely {typestr}')
+            for val, freq in field.values.items():
+                print(f"  {val:#0{field.length * 2}x} ({freq})")
+
+
     def show_strings(self):
         self.log('not implemented')
         pass
@@ -136,6 +190,8 @@ def main():
     parser.add_argument('--packet-offset', '-o', type=lambda x: int(x,0), default=0,
                         help='Offset in packet to diff (PCAPs only)')
     parser.add_argument('--verbose', '-v', action="store_true", help='verbose output')
+    parser.add_argument('--fields', '-F', action="store_true",
+            help='List likely fields and their common values based on frequency analysis')
     parser.add_argument('--bytes', '-b', action="store_true", help='List common bytes per offset')
     parser.add_argument('--words', '-w', action="store_true",
                         help='List common words (uint16) per offset')
@@ -146,7 +202,9 @@ def main():
     # - specify dissection layer (-l)
     args = parser.parse_args()
     pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose)
-    pd.show_heatmap()
+    #pd.show_heatmap()
+    if args.fields:
+        pd.show_likely_fields()
     if args.bytes:
         pd.show_bytes()
     if args.words:
