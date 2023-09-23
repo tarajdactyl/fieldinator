@@ -9,7 +9,6 @@ class Field():
         self.length = length
         self.values = values
 
-
 class pDiff():
     def __init__(self, input_file, display_filter='', packet_offset=0,
             verbose=False, endianness="big"):
@@ -43,8 +42,9 @@ class pDiff():
         for pkt in self.packets:
             self.vlog(f"Frame {pkt.number}")
             #self.vlog(f"  {pkt.frame_info}")
-            pbytes = bytes.fromhex(pkt.frame_raw.value)
+            pbytes = bytes.fromhex(pkt.frame_raw.value)[self.packet_offset:]
             for i, b in enumerate(pbytes):
+                i = i + self.packet_offset
                 # record bytes
                 if i not in self.bytes:
                     self.bytes[i] = {}
@@ -145,8 +145,8 @@ class pDiff():
         # prefer the largest-size field with the smallest number of possible options.
 
         self.fields = []
-        offset = 0
-        while offset < len(self.bytes.keys()) - 4:
+        offset = self.packet_offset
+        while offset < len(self.bytes.keys()) + self.packet_offset - 4:
             b_count = max(len(self.bytes[o].keys()) for o in range(offset,offset+4))
             w_count = max(len(self.words[o].keys()) for o in range(offset, offset+3))
             d_count = len(self.dwords[offset].keys())
