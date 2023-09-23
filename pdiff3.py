@@ -1,7 +1,31 @@
 #!/usr/bin/env python3
 
 import argparse
+import math
 import pyshark
+import colorsys
+
+NORMALCODE = '\x1b[0m'
+
+def hd_linebreak(off):
+    return f"\n{NORMALCODE}{off:04x}:  "
+
+def heatMapColor(value):
+    """
+    get RGB color for heatmap given a float value between 0 and 1
+    """
+    h = ((1.0 - value) * 240) / 360
+    return [math.floor(x*255+.5) for x in colorsys.hls_to_rgb(h, .5, 1)]
+
+def get_heatmap_colorcode(value):
+    r,g,b = heatMapColor(value)
+    # ESC[48;2;⟨r⟩;⟨g⟩;⟨b⟩
+    colorcode = f'\x1b[48;2;{r};{g};{b}m'
+    return colorcode
+
+def printHeatMapValue(text, value):
+    colorcode = get_heatmap_colorcode(value)
+    print(f'{colorcode}{text}{NORMALCODE}', end='')
 
 class Field():
     def __init__(self, offset, length, values):
@@ -153,8 +177,40 @@ class pDiff():
         self.vlog(f"{self.input_file} is not a PCAP[NG] file; treating it as text")
         return False
 
-    def show_heatmap(self):
-        pass
+    def show_heatmap(self, levels=8):
+        c = 0
+        for field in self.fields:
+            n = len(field.values.keys())
+            if (c % 0x10) == 0:
+                print(f"{c:04x}:  ", end='')
+
+            bytes_left = 16 - (c%16)
+            bytes_to_print = []
+            if n == 1:
+                v = list(field.values.values())[0]
+                bs = v.to_bytes(field.length)
+                bytes_to_print.extend(f'{b:02x}' for b in bs)
+            else:
+                bytes_to_print.extend(['xx'] * field.length)
+
+            level = math.floor(math.log2(n))
+            if level >= levels:
+                level = levels - 1
+
+            fieldstr = '[' + '  '.join(bytes_to_print[:bytes_left])
+            nextline = bytes_to_print[bytes_left:]
+            if nextline:
+                fieldstr += (' ' + hd_linebreak(c) + get_heatmap_colorcode(level/levels) + ' '
+                             + '  '.join(nextline))
+            fieldstr += ']'
+            printHeatMapValue(fieldstr, level/levels)
+
+            c += field.length
+            if (c % 0x10) == 0:
+                print()
+
+        if c % 0x10:
+            print(hd_linebreak(c))
 
     def show(self, freqarray, label, width):
         for i in sorted(freqarray.keys()):
@@ -243,7 +299,7 @@ def main():
 
     args = parser.parse_args()
     pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose, args.endian, args.protocol, args.protocol_field)
-    #pd.show_heatmap()
+    pd.show_heatmap()
     if args.fields:
         pd.show_likely_fields()
     if args.bytes:
