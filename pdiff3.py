@@ -102,8 +102,9 @@ class pDiff():
                 pbytes = bytes.fromhex(rawfield[0])
             else:
                 pbytes = bytes.fromhex(layer.value)[self.packet_offset:]
+
+            self.vlog(pbytes)
             for i, b in enumerate(pbytes):
-                i = i + self.packet_offset
                 # record bytes
                 if i not in self.bytes:
                     self.bytes[i] = {}
@@ -113,14 +114,14 @@ class pDiff():
                 if i + 1 < len(pbytes):
                     if i not in self.words:
                         self.words[i] = {}
-                    word = int.from_bytes(pbytes[i:2], self.endianness)
+                    word = int.from_bytes(pbytes[i:i+2], self.endianness)
                     self.words[i][word] = self.words[i].get(word, 0) + 1
 
                 # record dword
                 if i + 3 < len(pbytes):
                     if i not in self.dwords:
                         self.dwords[i] = {}
-                    dword = int.from_bytes(pbytes[i:4], self.endianness)
+                    dword = int.from_bytes(pbytes[i:i+4], self.endianness)
                     self.dwords[i][dword] = self.dwords[i].get(dword, 0) + 1
         return 0
 
@@ -187,8 +188,8 @@ class pDiff():
             bytes_left = 16 - (c%16)
             bytes_to_print = []
             if n == 1:
-                v = list(field.values.values())[0]
-                bs = v.to_bytes(field.length)
+                v = list(field.values.keys())[0]
+                bs = v.to_bytes(field.length, byteorder=self.endianness)
                 bytes_to_print.extend(f'{b:02x}' for b in bs)
             else:
                 bytes_to_print.extend(['xx'] * field.length)
@@ -237,16 +238,17 @@ class pDiff():
         # prefer the largest-size field with the smallest number of possible options.
 
         self.fields = []
-        offset = self.packet_offset
-        while offset < len(self.bytes.keys()) + self.packet_offset - 4:
-            b_count = max(len(self.bytes[o].keys()) for o in range(offset,offset+4))
-            w_count = max(len(self.words[o].keys()) for o in range(offset, offset+3))
+        #offset = self.packet_offset
+        offset = 0
+        while offset < len(self.bytes.keys()) - 4:
+            b_count = min(len(self.bytes[o].keys()) for o in range(offset,offset+4))
+            w_count = min(len(self.words[o].keys()) for o in range(offset, offset+3))
             d_count = len(self.dwords[offset].keys())
 
-            if d_count >= w_count >= b_count:
+            if d_count <= w_count <= b_count:
                 width = 4
                 values = self.dwords[offset]
-            elif w_count >= b_count:
+            elif w_count <= b_count:
                 width = 2
                 values = self.words[offset]
             else:
