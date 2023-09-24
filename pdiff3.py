@@ -245,6 +245,8 @@ class pDiff():
         #offset = self.packet_offset
         offset = 0
         while offset < len(self.bytes.keys()) - 4:
+
+            # check the next four bytes to see if they change together
             b_count = min(len(self.bytes[o].keys()) for o in range(offset,offset+4))
             w_count = min(len(self.words[o].keys()) for o in range(offset, offset+3))
             d_count = len(self.dwords[offset].keys())
@@ -252,12 +254,16 @@ class pDiff():
             if d_count <= w_count <= b_count:
                 width = 4
                 values = self.dwords[offset]
-            elif w_count <= b_count:
-                width = 2
-                values = self.words[offset]
             else:
-                width = 1
-                values = self.bytes[offset]
+                # check the next two bytes to see if they change together
+                b_count = min(len(self.bytes[o].keys()) for o in range(offset,offset+1))
+                w_count = len(self.words[offset].keys())
+                if w_count <= b_count:
+                    width = 2
+                    values = self.words[offset]
+                else:
+                    width = 1
+                    values = self.bytes[offset]
 
             self.fields.append(Field(offset, width, values))
             offset += width
