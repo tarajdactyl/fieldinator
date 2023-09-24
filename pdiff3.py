@@ -6,6 +6,7 @@ import pyshark
 import colorsys
 
 NORMALCODE = '\x1b[0m'
+BLACKFG = f'\x1b[38;2;0;0;0m'
 
 def hd_offset(off, width):
     return f'{NORMALCODE}{off:0{width}x}:  '
@@ -24,8 +25,9 @@ def get_heatmap_colorcode(value):
     return colorcode
 
 def printHeatMapValue(text, value):
-    colorcode = get_heatmap_colorcode(value)
-    print(f'{colorcode}{text}{NORMALCODE}', end='')
+    bgcolorcode = get_heatmap_colorcode(value)
+
+    print(f'{bgcolorcode}{BLACKFG}{text}{NORMALCODE}', end='')
 
 class Field():
     def __init__(self, offset, length, values):
@@ -202,7 +204,8 @@ class pDiff():
             fieldstr = '[' + '  '.join(bytes_to_print[:bytes_left])
             nextline = bytes_to_print[bytes_left:]
             if nextline:
-                fieldstr += (' \n' + hd_offset(c+bytes_left, offwidth) + get_heatmap_colorcode(level/levels) + ' '
+                fieldstr += (' \n' + hd_offset(c+bytes_left, offwidth)
+                             + get_heatmap_colorcode(level/levels) + BLACKFG + ' '
                              + '  '.join(nextline))
             fieldstr += ']'
             printHeatMapValue(fieldstr, level/levels)
