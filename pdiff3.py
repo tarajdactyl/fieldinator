@@ -107,7 +107,10 @@ class pDiff():
 
             self.vlog(pbytes)
             for i, b in enumerate(pbytes):
+                # TODO: check values against the length of the packet/length remaining
+                # both inclusive and exclusive of the field; add these to "potential lengths"
                 # record bytes
+                # TODO: track strings
                 if i not in self.bytes:
                     self.bytes[i] = {}
                 self.bytes[i][b] = self.bytes[i].get(b, 0) + 1
