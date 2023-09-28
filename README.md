@@ -1,5 +1,5 @@
-PDiff3
-======
+Fieldinator
+============
 
 A spiritual descendent of @netspooky's pdiff2; there were features I wanted
 to add to pdiff2, but I also wanted to rework some things and had considered

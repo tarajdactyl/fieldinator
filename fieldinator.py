@@ -35,7 +35,7 @@ class Field():
         self.length = length
         self.values = values
 
-class pDiff():
+class Fieldinator():
     def __init__(self, input_file, display_filter='', packet_offset=0,
             verbose=False, endianness="big", protocol=None, protocol_field=None):
         self.input_file = input_file
@@ -292,7 +292,7 @@ class pDiff():
 
 
 def main():
-    parser = argparse.ArgumentParser("pDiff3")
+    parser = argparse.ArgumentParser("Fieldinator")
     parser.add_argument('input', help='Input File to Analyze')
     parser.add_argument('--filter', '-f', default="", help='Display Filter to use (PCAPs only)')
     parser.add_argument('--packet-offset', '-o', type=lambda x: int(x,0), default=0,
@@ -313,18 +313,18 @@ def main():
 
 
     args = parser.parse_args()
-    pd = pDiff(args.input, args.filter, args.packet_offset, args.verbose, args.endian, args.protocol, args.protocol_field)
-    pd.show_heatmap()
+    fd = Fieldinator(args.input, args.filter, args.packet_offset, args.verbose, args.endian, args.protocol, args.protocol_field)
+    fd.show_heatmap()
     if args.fields:
-        pd.show_likely_fields()
+        fd.show_likely_fields()
     if args.bytes:
-        pd.show_bytes()
+        fd.show_bytes()
     if args.words:
-        pd.show_words()
+        fd.show_words()
     if args.dwords:
-        pd.show_dwords()
+        fd.show_dwords()
     if args.strings:
-        pd.show_strings()
+        fd.show_strings()
 
 if __name__ == '__main__':
     main()
