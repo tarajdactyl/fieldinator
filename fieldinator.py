@@ -30,10 +30,33 @@ def printHeatMapValue(text, value):
     print(f'{bgcolorcode}{BLACKFG}{text}{NORMALCODE}', end='')
 
 class Field():
-    def __init__(self, offset, length, values):
+    def __init__(self, offset, length, freqs_dict, endianness='big'):
         self.offset = offset
         self.length = length
-        self.values = values
+        # dictionary of values and frequencey
+        self.freqs = freqs_dict
+        self.endianness = endianness
+        self.fixed_value = None
+        if len(self.freqs.keys()) == 1:
+            self.fixed_value = list(self.freqs.keys())[0]
+
+    def __str__(self, skip=0, trunc=None):
+        bytes_to_print = []
+
+        if trunc and trunc >= self.length:
+            trunc = None
+
+        if self.fixed_value is not None:
+            bs = self.fixed_value.to_bytes(self.length, byteorder=self.endianness)[skip:trunc]
+            bytes_to_print.extend(f'{b:02x}' for b in bs)
+        else:
+            l = self.length
+            if trunc:
+                l = min(self.length, trunc)
+            bytes_to_print.extend(['xx'] * (l-skip))
+
+
+        return ' '.join(bytes_to_print)
 
 class Fieldinator():
     def __init__(self, input_file, display_filter='', packet_offset=0,
@@ -185,16 +208,17 @@ class Fieldinator():
 
     def show_heatmap(self, levels=8):
         c = 0
-        offwidth = math.ceil(len(self.bytes).bit_length() / 4)
-        for field in self.fields:
-            n = len(field.values.keys())
+        offwidth = self.get_off_width()
+        for offset in sorted(self.fields.keys()):
+            field = self.fields[offset]
+            n = len(field.freqs.keys())
             if (c % 0x10) == 0:
                 print(hd_offset(c, offwidth), end='')
 
             bytes_left = 16 - (c%16)
             bytes_to_print = []
             if n == 1:
-                v = list(field.values.keys())[0]
+                v = list(field.freqs.keys())[0]
                 bs = v.to_bytes(field.length, byteorder=self.endianness)
                 bytes_to_print.extend(f'{b:02x}' for b in bs)
             else:
@@ -244,7 +268,7 @@ class Fieldinator():
         # for each offset in the packet, look at the number of values seen with bytes, words, dwords;
         # prefer the largest-size field with the smallest number of possible options.
 
-        self.fields = []
+        self.fields = {}
         #offset = self.packet_offset
         offset = 0
         while offset < len(self.bytes.keys()) - 4:
@@ -268,11 +292,12 @@ class Fieldinator():
                     width = 1
                     values = self.bytes[offset]
 
-            self.fields.append(Field(offset, width, values))
+            self.fields[offset] = Field(offset, width, values)
             offset += width
 
     def show_likely_fields(self):
-        for field in self.fields:
+        for offset in sorted(self.fields.keys()):
+            field = self.fields[offset]
             typestr="Unknown"
             if field.length == 1:
                 typestr = "Byte"
@@ -282,13 +307,16 @@ class Fieldinator():
                 typestr = "DWord"
 
             print(f'{field.offset:#02x}: likely {typestr}')
-            for val, freq in field.values.items():
+            for val, freq in field.freqs.items():
                 print(f"  {val:#0{field.length * 2}x} ({freq})")
 
 
     def show_strings(self):
         self.log('not implemented')
         pass
+
+    def get_off_width(self):
+        return math.ceil(len(self.bytes).bit_length() / 4)
 
 
 def main():
@@ -313,7 +341,8 @@ def main():
 
 
     args = parser.parse_args()
-    fd = Fieldinator(args.input, args.filter, args.packet_offset, args.verbose, args.endian, args.protocol, args.protocol_field)
+    fd = Fieldinator(args.input, args.filter, args.packet_offset, args.verbose,
+            args.endian, args.protocol, args.protocol_field)
     fd.show_heatmap()
     if args.fields:
         fd.show_likely_fields()
