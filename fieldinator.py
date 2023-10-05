@@ -5,11 +5,7 @@ import math
 import pyshark
 import colorsys
 
-NORMALCODE = '\x1b[0m'
-BLACKFG = f'\x1b[38;2;0;0;0m'
-
-def hd_offset(off, width):
-    return f'{NORMALCODE}{off:0{width}x}:  '
+from blessed import Terminal
 
 def heatMapColor(value):
     """
@@ -18,16 +14,6 @@ def heatMapColor(value):
     h = ((1.0 - value) * 240) / 360
     return [math.floor(x*255+.5) for x in colorsys.hls_to_rgb(h, .5, 1)]
 
-def get_heatmap_colorcode(value):
-    r,g,b = heatMapColor(value)
-    # ESC[48;2;⟨r⟩;⟨g⟩;⟨b⟩
-    colorcode = f'\x1b[48;2;{r};{g};{b}m'
-    return colorcode
-
-def printHeatMapValue(text, value):
-    bgcolorcode = get_heatmap_colorcode(value)
-
-    print(f'{bgcolorcode}{BLACKFG}{text}{NORMALCODE}', end='')
 
 class Field():
     def __init__(self, offset, length, freqs_dict, endianness='big'):
@@ -89,9 +75,14 @@ class Fieldinator():
         self.dwords = {}
         self.fields = []
 
+        # initialize TUI
+        self.term = Terminal()
+
+        # process packets and find fields
         ret = self.process_packets()
         if ret != -1:
             self.find_likely_fields()
+
 
     def process_packets(self):
         self.bytes = {}
@@ -206,6 +197,21 @@ class Fieldinator():
         self.vlog(f"{self.input_file} is not a PCAP[NG] file; treating it as text")
         return False
 
+
+    def hd_offset(self, off, width):
+        return f'{self.term.normal}{off:0{width}x}:  '
+
+    def get_heatmap_colorcode(self, value):
+        r,g,b = heatMapColor(value)
+        # ESC[48;2;⟨r⟩;⟨g⟩;⟨b⟩
+        colorcode = self.term.on_color_rgb(r,g,b)
+        return colorcode
+
+    def printHeatMapValue(self, text, value):
+        bgcolorcode = self.get_heatmap_colorcode(value)
+
+        print(f'{bgcolorcode}{self.term.black}{text}{self.term.normal}', end='')
+
     def show_heatmap(self, levels=8):
         c = 0
         offwidth = self.get_off_width()
@@ -213,7 +219,7 @@ class Fieldinator():
             field = self.fields[offset]
             n = len(field.freqs.keys())
             if (c % 0x10) == 0:
-                print(hd_offset(c, offwidth), end='')
+                print(self.hd_offset(c, offwidth), end='')
 
             bytes_left = 16 - (c%16)
             bytes_to_print = []
@@ -231,18 +237,18 @@ class Fieldinator():
             fieldstr = '[' + '  '.join(bytes_to_print[:bytes_left])
             nextline = bytes_to_print[bytes_left:]
             if nextline:
-                fieldstr += (' \n' + hd_offset(c+bytes_left, offwidth)
-                             + get_heatmap_colorcode(level/levels) + BLACKFG + ' '
+                fieldstr += (' \n' + self.hd_offset(c+bytes_left, offwidth)
+                             + self.get_heatmap_colorcode(level/levels) + self.term.black + ' '
                              + '  '.join(nextline))
             fieldstr += ']'
-            printHeatMapValue(fieldstr, level/levels)
+            self.printHeatMapValue(fieldstr, level/levels)
 
             c += field.length
             if (c % 0x10) == 0:
                 print()
 
         if c % 0x10:
-            print('\n' + hd_offset(c, offwidth))
+            print('\n' + self.hd_offset(c, offwidth))
 
     def show(self, freqarray, label, width):
         for i in sorted(freqarray.keys()):
@@ -318,6 +324,13 @@ class Fieldinator():
     def get_off_width(self):
         return math.ceil(len(self.bytes).bit_length() / 4)
 
+    def interactive(self):
+        """Display an interactive TUI"""
+        term = self.term
+        with term.fullscreen(), term.cbreak():
+            self.show_heatmap()
+            term.inkey()
+
 
 def main():
     parser = argparse.ArgumentParser("Fieldinator")
@@ -343,7 +356,8 @@ def main():
     args = parser.parse_args()
     fd = Fieldinator(args.input, args.filter, args.packet_offset, args.verbose,
             args.endian, args.protocol, args.protocol_field)
-    fd.show_heatmap()
+    #fd.show_heatmap()
+    fd.interactive()
     if args.fields:
         fd.show_likely_fields()
     if args.bytes:
