@@ -87,7 +87,8 @@ class Fieldinator():
         # initialize TUI
         term = Terminal()
         self.term = term
-        self.default_color = term.normal + term.white + term.on_webpurple
+        #self.default_color = term.normal + term.white + term.on_webpurple
+        self.default_color = term.normal + term.mediumorchid1 + term.on_black
         self.selected_color = term.normal +term.bold + term.on_white + term.webpurple
 
         with term.fullscreen(), term.cbreak(), term.hidden_cursor():
@@ -115,6 +116,9 @@ class Fieldinator():
                 print(self.term.center(line))
 
     def init_packets(self):
+        # TODO: we should write the packet results to disk, along with a file
+        # timestamp and various parameters that feed into this
+        # to avoid reprocessing large files when nothing has changed
         if self.packets:
             self.packets.close()
 
@@ -126,6 +130,8 @@ class Fieldinator():
         ret = self.process_packets()
         if ret != -1:
             self.find_likely_fields()
+        else:
+            self.log("ERROR PROCESSING PACKETS")
 
     def process_packets(self):
         self.bytes = {}
@@ -200,9 +206,8 @@ class Fieldinator():
         filters = []
         if self.input_display_filter :
             filters.append(self.input_display_filter)
-        for offset in self.fields.keys():
-            field = self.fields[offset]
-            if field.fixed_value is not None:
+        for _, field in self.fields.items():
+            if field.fixed_value is not None and len(field.freqs.keys()) > 1:
                 bs = ":".join(f'{b:02x}' for b in field.fixed_value_bytes())
                 filters += [f'{filterbase}[{field.offset}:{field.length}] == {bs}']
 
@@ -215,7 +220,8 @@ class Fieldinator():
 
     def err(self, *args, **kwargs):
         # todo: make it red or something
-        return self.log(*args, **kwargs)
+        #return self.log(*args, **kwargs)
+        pass
 
     def vlog(self, *args, **kwargs):
         # todo: proper logging
@@ -322,8 +328,11 @@ class Fieldinator():
             print('\n' + self.hd_offset(c, offwidth), end='', flush=True)
 
         if selected_location is not None and expand_field:
+            # draw field dropdown
             self.log(f'moving to {selected_location}')
             selected_field = self.fields[self.fieldoffset_by_byteoffset[selected]]
+            if len(selected_field.freqs.keys()) <= 1:
+                return
             selected_idx_color = term.bold + term.white + term.on_darkblue
             y,x = selected_location
             exes = '  '.join(['xx'] * selected_field.length)
@@ -371,6 +380,7 @@ class Fieldinator():
         self.fieldoffset_by_byteoffset = {}
         #offset = self.packet_offset
         offset = 0
+        self.log(f"finding fields for {len(self.bytes.keys())} bytes")
         while offset < len(self.bytes.keys()) - 4:
 
             # check the next four bytes to see if they change together
@@ -397,6 +407,8 @@ class Fieldinator():
             for i in range(width):
                 self.fieldoffset_by_byteoffset[offset + i] = offset
             offset += width
+        self.log(f"found {len(self.fields.keys())} fields; {self.fieldoffset_by_byteoffset.keys()} offsets")
+
 
     def show_likely_fields(self):
         for offset in sorted(self.fields.keys()):
@@ -465,16 +477,17 @@ class Fieldinator():
                 key = term.inkey()
                 if key == 'h' or key.code == term.KEY_LEFT:
                     selected_offset = selected_offset - 1
-                    expand_field = False
+                    if expand_field:
+                        needs_clear = True
                 if key == 'l' or key.code == term.KEY_RIGHT:
                     selected_offset = selected_offset + sel_field.length
-                    expand_field = False
+                    if expand_field:
+                        needs_clear = True
                 if key == 'j' or key.code == term.KEY_DOWN:
                     if expand_field:
                         selected_val_index += 1
                         maxidx = len(self.fields[selected_offset].freqs.keys()) - 1
-                        if selected_val_index > maxidx:
-                            selected_val_index = maxidx
+                        selected_val_index = min(selected_val_index, maxidx)
                     else:
                         selected_offset = selected_offset + 0x10
                 if key == 'k' or key.code == term.KEY_UP:
@@ -487,8 +500,8 @@ class Fieldinator():
 
                 if key.code == term.KEY_ENTER or key == ' ':
                     # toggle showing values for the selected field on enter or space
-                    if expand_field:
-                        field = self.fields[selected_offset]
+                    field = self.fields[selected_offset]
+                    if expand_field and len(field.freqs.keys()) > 1:
                         self.log(f"selected_val_index: {selected_val_index}")
                         orig_fixed_val = field.fixed_value
                         if selected_val_index >= 0:
@@ -504,6 +517,7 @@ class Fieldinator():
                             self.show_busy()
                             self.update_display_filter()
                             self.init_packets()
+                            selected_offset = 0
                             needs_clear = True
 
                     else:
@@ -513,13 +527,12 @@ class Fieldinator():
                     expand_field = False
                     needs_clear = True
 
-                if selected_offset < 0:
-                    selected_offset = 0
-                if selected_offset > maxoff:
-                    self.log(f'{selected_offset} > {maxoff}')
-                    self.log(f'setting = {maxoff}')
-                    selected_offset = maxoff
+                # keep selected_offset in-bounds
+                selected_offset = max(selected_offset, 0)
+                selected_offset = min(selected_offset, maxoff)
 
+                # adjust it to the nearest field offset
+                self.log(selected_offset)
                 selected_offset = self.fieldoffset_by_byteoffset[selected_offset]
 
 def main():
