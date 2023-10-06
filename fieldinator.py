@@ -47,10 +47,16 @@ class Field():
 
         return ret
 
+    def fixed_value_bytes(self):
+        return self.fixed_value.to_bytes(self.length, byteorder=self.endianness)
+
 class Fieldinator():
     def __init__(self, input_file, display_filter='', packet_offset=0,
             verbose=False, endianness="big", protocol=None, protocol_field=None):
         self.input_file = input_file
+        # input display filter never changes other than here
+        self.input_display_filter = display_filter
+        # display filter changes as user selects things
         self.display_filter = display_filter
         self.packet_offset = packet_offset
         self.verbose = verbose
@@ -65,14 +71,11 @@ class Fieldinator():
         if protocol_field:
             self.protocol_field = protocol_field
 
-        if self.is_pcap:
-            self.packets = pyshark.FileCapture(self.input_file,
-                                               use_json=True, include_raw=True,
-                                               display_filter=self.display_filter)
-        else:
+        if not self.is_pcap:
             self.log("Text mode isn't implemented yet")
             return
 
+        self.packets = None
         self.bytes = {}
         self.words = {}
         self.dwords = {}
@@ -83,11 +86,20 @@ class Fieldinator():
         self.term = Terminal()
         self.selected_color = self.term.rev + self.term.bold
 
+        self.init_packets()
+
+    def init_packets(self):
+        if self.packets:
+            self.packets.close()
+
+        self.packets = pyshark.FileCapture(self.input_file,
+                use_json=True, include_raw=True,
+                display_filter=self.display_filter)
+
         # process packets and find fields
         ret = self.process_packets()
         if ret != -1:
             self.find_likely_fields()
-
 
     def process_packets(self):
         self.bytes = {}
@@ -148,6 +160,28 @@ class Fieldinator():
                     dword = int.from_bytes(pbytes[i:i+4], self.endianness)
                     self.dwords[i][dword] = self.dwords[i].get(dword, 0) + 1
         return 0
+
+    def update_display_filter(self):
+        filterbase = self.protocol
+        if self.protocol_field:
+            # ugh, this isn't going to work for some protocol fields
+            # because what wireshark wants for the filter
+            # and what pyshark wants for access are two different things
+            # probably we should require commandline to be wireshark syntax
+            # and we can convert it to what pyshark wants... TODO
+            filterbase = f'{self.protocol}.{self.protocol_field}'
+
+        filters = []
+        if self.input_display_filter :
+            filters.append(self.input_display_filter)
+        for offset in self.fields.keys():
+            field = self.fields[offset]
+            if field.fixed_value is not None:
+                bs = ":".join(f'{b:02x}' for b in field.fixed_value_bytes())
+                filters += [f'{filterbase}[{field.offset}:{field.length}] == {bs}']
+
+        self.display_filter = ' && '.join(filters)
+        self.log(f'new display filter: "{self.display_filter}"')
 
     def log(self, *args, **kwargs):
         # todo: proper logging
@@ -410,11 +444,20 @@ class Fieldinator():
                     if expand_field:
                         field = self.fields[selected_offset]
                         self.log(f"selected_val_index: {selected_val_index}")
+                        orig_fixed_val = field.fixed_value
                         if selected_val_index >= 0:
                             field.fixed_value = list(field.freqs.keys())[selected_val_index]
                         else:
                             field.fixed_value = None
+
                         expand_field = False
+
+                        if orig_fixed_val != field.fixed_value:
+                            # selection changed; gotta refresh the packets!
+                            self.update_display_filter()
+                            self.init_packets()
+                            # note: should probably display a spinner or something
+
                     else:
                         expand_field = True
 
