@@ -377,6 +377,7 @@ class Fieldinator():
                 self.log(f"selected: {selected_offset}; max: {maxoff}")
                 sel_field = self.fields[selected_offset]
                 print(term.home, end='', flush=True)
+                print(self.input_file, flush=True)
                 self.show_heatmap(selected=selected_offset,
                         expand_field=expand_field,
                         selected_field_val_idx=selected_val_index)
