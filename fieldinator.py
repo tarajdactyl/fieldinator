@@ -5,6 +5,7 @@ import math
 import pyshark
 import colorsys
 import sys
+import random
 
 from blessed import Terminal
 
@@ -396,6 +397,24 @@ class Fieldinator():
     def get_off_width(self):
         return math.ceil(len(self.bytes).bit_length() / 4)
 
+    def show_busy(self):
+        term = self.term
+        messages = ["Reticulating Splines...", "Loading...", "Please wait...",
+                    "Hold your horses!","All of your bytes are exactly where you left them...",
+                    "Hang on a sec, will ya?", "BRB", "Back Soon...",
+                    "Your call is important to us, please stand by...",
+                    "Never gonna give you up, never gonna let you down...",
+                    "Definitely not encrypting your files...",
+                    "Moving at the speed of mission!"
+                    ]
+        with term.location(0, (term.height//3)):
+            msgline = (term.height//3)//2
+            for i in range(term.height // 3):
+                if i == msgline:
+                    print(term.black_on_yellow(term.center(random.choice(messages))))
+                else:
+                    print(term.black_on_yellow(term.clear_eol))
+
     def interactive(self):
         """Display an interactive TUI"""
         term = self.term
@@ -417,6 +436,7 @@ class Fieldinator():
                 self.show_heatmap(selected=selected_offset,
                         expand_field=expand_field,
                         selected_field_val_idx=selected_val_index)
+
                 self.log(f'expand_field: {expand_field}')
                 key = term.inkey()
                 if key == 'h' or key.code == term.KEY_LEFT:
@@ -457,10 +477,10 @@ class Fieldinator():
 
                         if orig_fixed_val != field.fixed_value:
                             # selection changed; gotta refresh the packets!
+                            self.show_busy()
                             self.update_display_filter()
                             self.init_packets()
                             needs_clear = True
-                            # note: should probably display a spinner or something
 
                     else:
                         expand_field = True
