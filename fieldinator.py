@@ -6,6 +6,7 @@ import pyshark
 import colorsys
 import sys
 import random
+import textwrap
 
 from blessed import Terminal
 
@@ -84,11 +85,34 @@ class Fieldinator():
         self.fieldoffset_by_byteoffset = {}
 
         # initialize TUI
-        self.term = Terminal()
-        self.default_color = self.term.normal + self.term.white + self.term.on_webpurple
-        self.selected_color = self.term.normal +self.term.bold + self.term.on_white + self.term.webpurple
+        term = Terminal()
+        self.term = term
+        self.default_color = term.normal + term.white + term.on_webpurple
+        self.selected_color = term.normal +term.bold + term.on_white + term.webpurple
 
-        self.init_packets()
+        with term.fullscreen(), term.cbreak(), term.hidden_cursor():
+            self.show_logo()
+            self.init_packets()
+
+    def show_logo(self):
+        logo = '''
+              +--------------------------------------------------------------------------------+
+              |                                                                                |
+              |    ▄▀▀    ▀           ▀▀█        █    ▀                    ▄                   |
+              |  ▄▄█▄▄  ▄▄▄     ▄▄▄     █     ▄▄▄█  ▄▄▄    ▄ ▄▄    ▄▄▄   ▄▄█▄▄   ▄▄▄    ▄ ▄▄   |
+              |    █      █    █▀  █    █    █▀ ▀█    █    █▀  █  ▀   █    █    █▀ ▀█   █▀  ▀  |
+              |    █      █    █▀▀▀▀    █    █   █    █    █   █  ▄▀▀▀█    █    █   █   █      |
+              |    █    ▄▄█▄▄  ▀█▄▄▀    ▀▄▄  ▀█▄██  ▄▄█▄▄  █   █  ▀▄▄▀█    ▀▄▄  ▀█▄█▀   █      |
+              |                                                                                |
+              +--------------------------------------------------------------------------------+
+              Please wait, processing PCAP...
+              '''
+        lines = textwrap.dedent(logo).splitlines()
+        n = len(lines)
+        print(self.term.mediumorchid1 + self.term.on_black + self.term.home + self.term.clear())
+        with self.term.location(0, (self.term.height//2) - (n//2)):
+            for line in lines:
+                print(self.term.center(line))
 
     def init_packets(self):
         if self.packets:
