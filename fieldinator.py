@@ -343,13 +343,14 @@ class Fieldinator():
     def interactive(self):
         """Display an interactive TUI"""
         term = self.term
-        maxoff = len(self.bytes)
+        maxoff = len(self.bytes) - 2
         selected_offset = 0
         with term.fullscreen(), term.cbreak():
             key = ''
             while key.lower() != 'q':
-                self.log(f"selected: {selected_offset}")
+                self.log(f"selected: {selected_offset}; max: {maxoff}")
                 sel_field = self.fields[selected_offset]
+                print(term.home)
                 self.show_heatmap(selected=selected_offset)
                 key = term.inkey()
                 if key == 'h' or key.code == term.KEY_LEFT:
@@ -364,6 +365,8 @@ class Fieldinator():
                 if selected_offset < 0:
                     selected_offset = 0
                 if selected_offset > maxoff:
+                    self.log(f'{selected_offset} > {maxoff}')
+                    self.log(f'setting = {maxoff}')
                     selected_offset = maxoff
 
                 selected_offset = self.fieldoffset_by_byteoffset[selected_offset]
