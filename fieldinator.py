@@ -239,10 +239,9 @@ class Fieldinator():
                 level = levels - 1
 
             if offset <= selected < offset + field.length:
-                colorcode = selected_color
+                colorcode = self.term.rev + self.term.bold #selected_color
             else:
                 colorcode = self.get_heatmap_colorcode(level/levels)
-
 
             fieldstr = '[' + '  '.join(bytes_to_print[:bytes_left])
 
