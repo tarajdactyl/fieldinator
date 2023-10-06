@@ -79,6 +79,7 @@ class Fieldinator():
 
         # initialize TUI
         self.term = Terminal()
+        self.selected_color = self.term.rev + self.term.bold
 
         # process packets and find fields
         ret = self.process_packets()
@@ -212,18 +213,20 @@ class Fieldinator():
     def printHeatMapValue(self, text, value):
         bgcolorcode = self.get_heatmap_colorcode(value)
 
-        print(f'{bgcolorcode}{self.term.black}{text}{self.term.normal}', end='')
+        print(f'{bgcolorcode}{self.term.black}{text}{self.term.normal}', end='', flush=True)
 
-    def show_heatmap(self, selected=0, levels=8):
+    def show_heatmap(self, selected=0, expand_field=False, levels=8):
         c = 0
         offwidth = self.get_off_width()
-        selected_color = self.term.white + self.term.on_black()
+        term = self.term
+        selected_location = None
         for offset in sorted(self.fields.keys()):
             field = self.fields[offset]
 
             n = len(field.freqs.keys())
             if (c % 0x10) == 0:
-                print(self.hd_offset(c, offwidth), end='')
+                #self.log(f'printing new line at {term.get_location()}')
+                print(self.hd_offset(c, offwidth), end='', flush=True)
 
             bytes_left = 16 - (c%16)
             bytes_to_print = []
@@ -239,7 +242,9 @@ class Fieldinator():
                 level = levels - 1
 
             if offset <= selected < offset + field.length:
-                colorcode = self.term.rev + self.term.bold #selected_color
+                colorcode = self.selected_color
+                selected_location = term.get_location()
+                self.log(f"sel_loc: {selected_location}")
             else:
                 colorcode = self.get_heatmap_colorcode(level/levels)
 
@@ -252,14 +257,28 @@ class Fieldinator():
                              + '  '.join(nextline))
             fieldstr += ']'
 
-            print(f'{colorcode}{fieldstr}{self.term.normal}', end='')
+            #self.log(f'printing at {term.get_location()}')
+            print(f'{colorcode}{fieldstr}{term.normal}', end='', flush=True)
 
             c += field.length
             if (c % 0x10) == 0:
-                print()
+                print(flush=True)
 
         if c % 0x10:
-            print('\n' + self.hd_offset(c, offwidth))
+            print('\n' + self.hd_offset(c, offwidth), end='', flush=True)
+
+        if selected_location is not None and expand_field:
+            self.log(f'moving to {selected_location}')
+            selected_field = self.fields[self.fieldoffset_by_byteoffset[selected]]
+
+            y,x = selected_location
+            print(f"{term.move_xy(x, y)}", end='', flush=True)
+            for val in selected_field.freqs.keys():
+                y += 1
+                bs = val.to_bytes(selected_field.length, byteorder=selected_field.endianness)
+                s = '['+ '  '.join(f'{b:02x}' for b in bs) + ']'
+                print(f"{term.move_xy(x, y)}{self.selected_color}{s}{term.normal}", end='', flush=True)
+
 
     def show(self, freqarray, label, width):
         for i in sorted(freqarray.keys()):
@@ -344,22 +363,32 @@ class Fieldinator():
         term = self.term
         maxoff = len(self.bytes) - 2
         selected_offset = 0
-        with term.fullscreen(), term.cbreak():
+        expand_field = False
+        with term.fullscreen(), term.cbreak(), term.hidden_cursor():
             key = ''
             while key.lower() != 'q':
                 self.log(f"selected: {selected_offset}; max: {maxoff}")
                 sel_field = self.fields[selected_offset]
-                print(term.home)
-                self.show_heatmap(selected=selected_offset)
+                print(term.home, end='', flush=True)
+                self.show_heatmap(selected=selected_offset, expand_field=expand_field)
+                self.log(f'expand_field: {expand_field}')
                 key = term.inkey()
                 if key == 'h' or key.code == term.KEY_LEFT:
                     selected_offset = selected_offset - 1
+                    expand_field = False
                 if key == 'l' or key.code == term.KEY_RIGHT:
                     selected_offset = selected_offset + sel_field.length
+                    expand_field = False
                 if key == 'j' or key.code == term.KEY_DOWN:
                     selected_offset = selected_offset + 0x10
+                    expand_field = False
                 if key == 'k' or key.code == term.KEY_UP:
                     selected_offset = selected_offset - 0x10
+                    expand_field = False
+
+                if key.code == term.KEY_ENTER or key == ' ':
+                    # toggle showing values for the selected field on enter or space
+                    expand_field = not expand_field
 
                 if selected_offset < 0:
                     selected_offset = 0
