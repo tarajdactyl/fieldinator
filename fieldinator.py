@@ -4,6 +4,7 @@ import argparse
 import math
 import pyshark
 import colorsys
+import sys
 
 from blessed import Terminal
 
@@ -73,7 +74,8 @@ class Fieldinator():
         self.bytes = {}
         self.words = {}
         self.dwords = {}
-        self.fields = []
+        self.fields = {}
+        self.fieldoffset_by_byteoffset = {}
 
         # initialize TUI
         self.term = Terminal()
@@ -146,7 +148,7 @@ class Fieldinator():
 
     def log(self, *args, **kwargs):
         # todo: proper logging
-        print(*args, **kwargs)
+        print(*args,file=sys.stderr, **kwargs)
 
     def err(self, *args, **kwargs):
         # todo: make it red or something
@@ -205,18 +207,20 @@ class Fieldinator():
         r,g,b = heatMapColor(value)
         # ESC[48;2;⟨r⟩;⟨g⟩;⟨b⟩
         colorcode = self.term.on_color_rgb(r,g,b)
-        return colorcode
+        return colorcode + self.term.black
 
     def printHeatMapValue(self, text, value):
         bgcolorcode = self.get_heatmap_colorcode(value)
 
         print(f'{bgcolorcode}{self.term.black}{text}{self.term.normal}', end='')
 
-    def show_heatmap(self, levels=8):
+    def show_heatmap(self, selected=0, levels=8):
         c = 0
         offwidth = self.get_off_width()
+        selected_color = self.term.white + self.term.on_black()
         for offset in sorted(self.fields.keys()):
             field = self.fields[offset]
+
             n = len(field.freqs.keys())
             if (c % 0x10) == 0:
                 print(self.hd_offset(c, offwidth), end='')
@@ -234,14 +238,22 @@ class Fieldinator():
             if level >= levels:
                 level = levels - 1
 
+            if offset <= selected < offset + field.length:
+                colorcode = selected_color
+            else:
+                colorcode = self.get_heatmap_colorcode(level/levels)
+
+
             fieldstr = '[' + '  '.join(bytes_to_print[:bytes_left])
+
             nextline = bytes_to_print[bytes_left:]
             if nextline:
                 fieldstr += (' \n' + self.hd_offset(c+bytes_left, offwidth)
-                             + self.get_heatmap_colorcode(level/levels) + self.term.black + ' '
+                             + colorcode + ' '
                              + '  '.join(nextline))
             fieldstr += ']'
-            self.printHeatMapValue(fieldstr, level/levels)
+
+            print(f'{colorcode}{fieldstr}{self.term.normal}', end='')
 
             c += field.length
             if (c % 0x10) == 0:
@@ -275,6 +287,7 @@ class Fieldinator():
         # prefer the largest-size field with the smallest number of possible options.
 
         self.fields = {}
+        self.fieldoffset_by_byteoffset = {}
         #offset = self.packet_offset
         offset = 0
         while offset < len(self.bytes.keys()) - 4:
@@ -299,6 +312,9 @@ class Fieldinator():
                     values = self.bytes[offset]
 
             self.fields[offset] = Field(offset, width, values)
+            # cache the field starting offset for any given position in the packet
+            for i in range(width):
+                self.fieldoffset_by_byteoffset[offset + i] = offset
             offset += width
 
     def show_likely_fields(self):
@@ -327,10 +343,30 @@ class Fieldinator():
     def interactive(self):
         """Display an interactive TUI"""
         term = self.term
+        maxoff = len(self.bytes)
+        selected_offset = 0
         with term.fullscreen(), term.cbreak():
-            self.show_heatmap()
-            term.inkey()
+            key = ''
+            while key.lower() != 'q':
+                self.log(f"selected: {selected_offset}")
+                sel_field = self.fields[selected_offset]
+                self.show_heatmap(selected=selected_offset)
+                key = term.inkey()
+                if key == 'h' or key.code == term.KEY_LEFT:
+                    selected_offset = selected_offset - 1
+                if key == 'l' or key.code == term.KEY_RIGHT:
+                    selected_offset = selected_offset + sel_field.length
+                if key == 'j' or key.code == term.KEY_DOWN:
+                    selected_offset = selected_offset + 0x10
+                if key == 'k' or key.code == term.KEY_UP:
+                    selected_offset = selected_offset - 0x10
 
+                if selected_offset < 0:
+                    selected_offset = 0
+                if selected_offset > maxoff:
+                    selected_offset = maxoff
+
+                selected_offset = self.fieldoffset_by_byteoffset[selected_offset]
 
 def main():
     parser = argparse.ArgumentParser("Fieldinator")
