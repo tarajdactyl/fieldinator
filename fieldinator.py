@@ -84,7 +84,8 @@ class Fieldinator():
 
         # initialize TUI
         self.term = Terminal()
-        self.selected_color = self.term.rev + self.term.bold
+        self.default_color = self.term.normal + self.term.white + self.term.on_webpurple
+        self.selected_color = self.term.normal +self.term.bold + self.term.on_white + self.term.webpurple
 
         self.init_packets()
 
@@ -238,18 +239,15 @@ class Fieldinator():
 
 
     def hd_offset(self, off, width):
-        return f'{self.term.normal}{off:0{width}x}:  '
+        return f'{self.default_color}{off:0{width}x}:  '
 
     def get_heatmap_colorcode(self, value):
         r,g,b = heatMapColor(value)
         # ESC[48;2;⟨r⟩;⟨g⟩;⟨b⟩
+        if value == 0:
+            return self.default_color
         colorcode = self.term.on_color_rgb(r,g,b)
         return colorcode + self.term.black
-
-    def printHeatMapValue(self, text, value):
-        bgcolorcode = self.get_heatmap_colorcode(value)
-
-        print(f'{bgcolorcode}{self.term.black}{text}{self.term.normal}', end='', flush=True)
 
     def show_heatmap(self, selected=0, expand_field=False, selected_field_val_idx=-1, levels=8):
         c = 0
@@ -289,7 +287,7 @@ class Fieldinator():
             else:
                 fieldstr = f'[{str(field)}]'
 
-            print(f'{colorcode}{fieldstr}{term.normal}', end='', flush=True)
+            print(f'{colorcode}{fieldstr}{self.default_color}', end='', flush=True)
 
             c += field.length
             if (c % 0x10) == 0:
@@ -308,7 +306,7 @@ class Fieldinator():
             color = self.selected_color
             if selected_field_val_idx == -1:
                 color = selected_idx_color
-            print(f"{term.move_xy(x, y)}{color}[{exes}]{term.normal}", end='', flush=True)
+            print(f"{term.move_xy(x, y)}{color}[{exes}]{self.default_color}", end='', flush=True)
             for i, val in enumerate(selected_field.freqs.keys()):
                 y += 1
                 bs = val.to_bytes(selected_field.length, byteorder=selected_field.endianness)
@@ -317,7 +315,7 @@ class Fieldinator():
                 if i == selected_field_val_idx:
                     color = selected_idx_color
 
-                print(f"{term.move_xy(x, y)}{color}{s}{term.normal}", end='', flush=True)
+                print(f"{term.move_xy(x, y)}{color}{s}{self.default_color}", end='', flush=True)
 
 
     def show(self, freqarray, label, width):
@@ -401,16 +399,20 @@ class Fieldinator():
     def interactive(self):
         """Display an interactive TUI"""
         term = self.term
-        maxoff = len(self.bytes) - 2
+        maxoff = max(self.fields.keys())
         selected_offset = 0
         selected_val_index = -1
         expand_field = False
         with term.fullscreen(), term.cbreak(), term.hidden_cursor():
+            needs_clear = True
             key = ''
             while key.lower() != 'q':
                 self.log(f"selected: {selected_offset}; max: {maxoff}")
                 sel_field = self.fields[selected_offset]
                 print(term.home, end='', flush=True)
+                if needs_clear:
+                    print(self.default_color + self.term.clear, end='', flush=True)
+                    needs_clear = False
                 print(self.input_file, flush=True)
                 self.show_heatmap(selected=selected_offset,
                         expand_field=expand_field,
@@ -451,15 +453,21 @@ class Fieldinator():
                             field.fixed_value = None
 
                         expand_field = False
+                        needs_clear = True
 
                         if orig_fixed_val != field.fixed_value:
                             # selection changed; gotta refresh the packets!
                             self.update_display_filter()
                             self.init_packets()
+                            needs_clear = True
                             # note: should probably display a spinner or something
 
                     else:
                         expand_field = True
+
+                if key.code == term.KEY_ESCAPE:
+                    expand_field = False
+                    needs_clear = True
 
                 if selected_offset < 0:
                     selected_offset = 0
