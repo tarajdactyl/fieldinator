@@ -302,7 +302,7 @@ class Fieldinator():
             if offset <= selected < offset + field.length:
                 colorcode = self.selected_color
                 selected_location = term.get_location()
-                self.log(f"sel_loc: {selected_location}")
+                #self.log(f"sel_loc: {selected_location}")
             else:
                 colorcode = self.get_heatmap_colorcode(level/levels)
 
